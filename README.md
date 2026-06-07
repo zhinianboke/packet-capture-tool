@@ -6,6 +6,18 @@
 
 ---
 
+## 🖼️ 界面预览
+
+### 监控页
+
+![监控页](docs/images/monitor-page.png)
+
+### 弹窗
+
+![弹窗](docs/images/popup.png)
+
+---
+
 ## ✨ 功能特性
 
 | 能力 | 说明 |
@@ -152,6 +164,8 @@ packet-capture-tool/
 │       ├── theme.js               # 多主题定义、应用、持久化、跨页同步
 │       └── ui_common.js           # 通用：消息、提示、转义、剪贴板、遮罩、主题选择器
 ├── test_browser_monitor.py        # 参考实现（Playwright 版，本扩展据此重构）
+├── docs/
+│   └── images/                    # README 用的界面截图
 ├── .gitignore
 └── README.md
 ```
