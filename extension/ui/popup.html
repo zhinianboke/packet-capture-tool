@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-dark="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>接口抓取工具</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="popup">
+  <div class="popup-wrap">
+    <div class="popup-head">
+      <span class="brand"><span class="brand-logo"></span>接口抓取工具</span>
+      <span class="theme-switch" id="themeSwitch"></span>
+    </div>
+
+    <div class="popup-status">
+      当前状态：<span id="statusText" class="status-tag status-off">未监听</span>
+    </div>
+
+    <div class="popup-actions">
+      <button id="btnStart" class="btn btn-primary">开始监听</button>
+      <button id="btnStop" class="btn btn-default">停止监听</button>
+    </div>
+
+    <label class="switch-row">
+      <input type="checkbox" id="captureAll" />
+      <span>捕获全部（含图片、字体、样式等静态资源）</span>
+    </label>
+
+    <button id="btnCopyCookies" class="btn btn-default">复制当前页面 Cookie</button>
+    <button id="btnOpenMonitor" class="btn btn-link">打开监控页 →</button>
+
+    <p class="popup-tip">
+      提示：监听期间页面顶部会出现“扩展已开始调试此浏览器”的黄色横幅，属正常现象；停止监听后会自动消失。
+    </p>
+
+    <div id="toast" class="toast" hidden></div>
+  </div>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

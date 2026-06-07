@@ -1,0 +1,50 @@
+# ---------------- 依赖（已不使用，保留以防误提交） ----------------
+node_modules/
+
+# ---------------- 日志 ----------------
+*.log
+npm-debug.log*
+
+# ---------------- 运行时抓取数据 ----------------
+# 参考脚本 test_browser_monitor.py 的输出目录
+browser_monitor_data/
+# 导出的抓包结果（如手动放到仓库目录时忽略）
+requests_*.json
+requests_*.csv
+
+# ---------------- 打包产物 ----------------
+# 扩展打包文件
+*.zip
+*.crx
+*.pem
+
+# ---------------- 环境变量 / 密钥 ----------------
+.env
+.env.*
+!.env.example
+*.key
+
+# ---------------- 编辑器 / IDE / 工具配置 ----------------
+.idea/
+*.swp
+*.swo
+*~
+# Kiro 与 VSCode 的工具配置不纳入版本库
+.kiro/
+.vscode/
+
+# ---------------- 操作系统 ----------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---------------- Python（参考脚本相关） ----------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/

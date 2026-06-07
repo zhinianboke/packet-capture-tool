@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "接口抓取工具",
+  "version": "1.0.0",
+  "description": "抓取当前页面的全部接口请求，支持导出 JSON/CSV 与一键注入 Cookie 进入。",
+  "default_locale": "zh_CN",
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "permissions": [
+    "debugger",
+    "tabs",
+    "cookies",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "ui/popup.html",
+    "default_title": "接口抓取工具"
+  }
+}

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-dark="1">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>接口抓取工具</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="monitor">
+  <!-- 顶部工具栏 -->
+  <header class="toolbar">
+    <div class="toolbar-left">
+      <span class="brand"><span class="brand-logo"></span>接口抓取工具</span>
+      <span class="status-tag status-off" id="statusText">未监听</span>
+      <button id="btnStart" class="btn btn-primary btn-sm">开始监听</button>
+      <button id="btnStop" class="btn btn-default btn-sm">停止监听</button>
+    </div>
+    <div class="toolbar-right">
+      <span class="theme-switch" id="themeSwitch"></span>
+      <label class="switch-row inline">
+        <input type="checkbox" id="captureAll" />
+        <span>捕获全部</span>
+      </label>
+      <button id="btnExportJson" class="btn btn-default btn-sm">导出 JSON</button>
+      <button id="btnExportCsv" class="btn btn-default btn-sm">导出 CSV</button>
+      <button id="btnClear" class="btn btn-danger btn-sm">清空</button>
+    </div>
+  </header>
+
+  <!-- 一键进入表单 -->
+  <section class="enter-form">
+    <input type="text" id="enterUrl" class="input" placeholder="网址，如 https://www.goofish.com/" />
+    <input type="text" id="enterCookie" class="input input-cookie" placeholder="Cookie 字符串，如 a=1; b=2" />
+    <input type="text" id="enterDomains" class="input input-domains" placeholder="附加域名（可选，逗号分隔），如 .taobao.com" />
+    <button id="btnCopyCookies" class="btn btn-default">复制当前页面 Cookie</button>
+    <button id="btnEnter" class="btn btn-primary">进入</button>
+  </section>
+
+  <!-- 筛选栏：类型分组标签 + URL 关键字（类似 Chrome Network） -->
+  <section class="filter-bar">
+    <div class="filter-tags" id="filterTags"></div>
+    <input type="text" id="filterKeyword" class="input filter-keyword" placeholder="按 URL 关键字筛选" />
+    <span class="filter-count" id="filterCount"></span>
+  </section>
+
+  <!-- 主体：左侧列表 + 右侧详情 -->
+  <main class="content">
+    <div class="list-panel">
+      <div class="list-head">
+        <span class="col col-time">时间</span>
+        <span class="col col-method">方法</span>
+        <span class="col col-url">URL</span>
+        <span class="col col-status">状态码</span>
+      </div>
+      <div id="recordList" class="list-body"></div>
+      <div id="emptyTip" class="empty-tip">暂无请求记录</div>
+    </div>
+
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-empty">选择左侧某条请求查看详情</div>
+    </div>
+  </main>
+
+  <!-- 加载遮罩（规范第 23 条） -->
+  <div id="loadingMask" class="loading-mask" hidden>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- 右键菜单（复制为 fetch 等） -->
+  <div id="ctxMenu" class="ctx-menu" hidden>
+    <div class="ctx-item" data-action="copyFetch">复制为 fetch</div>
+    <div class="ctx-item" data-action="copyUrl">复制 URL</div>
+    <div class="ctx-item" data-action="copyResponse">复制响应体</div>
+  </div>
+
+  <!-- 消息提示 -->
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="monitor.js"></script>
+</body>
+</html>

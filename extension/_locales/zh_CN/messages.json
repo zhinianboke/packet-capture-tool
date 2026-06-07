@@ -1,0 +1,10 @@
+{
+  "extName": {
+    "message": "接口抓取工具",
+    "description": "扩展名称"
+  },
+  "extDesc": {
+    "message": "抓取当前页面的全部接口请求，支持导出 JSON/CSV 与一键注入 Cookie 进入。",
+    "description": "扩展描述"
+  }
+}
