@@ -54,6 +54,22 @@ export class DataStore {
   }
 
   /**
+   * 更新一条已存在的记录（按 id 覆盖写入，用于 WebSocket 帧增量更新）。
+   * @param {object} record 含 id 的完整记录
+   * @returns {Promise<void>}
+   */
+  async update(record) {
+    const db = await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readwrite");
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.put(record);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error || new Error("更新请求记录失败"));
+    });
+  }
+
+  /**
    * 读取全部请求记录（需求 7.2 / 导出）。
    * @returns {Promise<object[]>}
    */

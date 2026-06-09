@@ -517,6 +517,60 @@ body {
   border: 1px solid rgba(251, 191, 36, 0.35);
 }
 
+/* WebSocket 标识 */
+.ws-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-2);
+  background: rgba(var(--accent-rgb), 0.16);
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+}
+
+/* WebSocket 帧列表 */
+.ws-frames {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.ws-frame {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--panel-solid);
+}
+.ws-frame.ws-send { border-left: 3px solid var(--accent); }
+.ws-frame.ws-recv { border-left: 3px solid var(--ok); }
+.ws-frame.ws-err { border-left: 3px solid var(--err); }
+.ws-dir {
+  font-weight: 700;
+  font-size: 12px;
+  margin-right: 8px;
+}
+.ws-time {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.ws-data {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.ws-empty {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
 .empty-tip {
   position: absolute;
   top: 50%;

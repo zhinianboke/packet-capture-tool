@@ -20,6 +20,7 @@ export const CSV_COLUMNS = [
   "responseHeaders",
   "responseBody",
   "setCookies",
+  "wsFrames",
 ];
 
 // CSV 中文表头映射（与 CSV_COLUMNS 一一对应），便于中文用户在 Excel 中阅读
@@ -38,6 +39,7 @@ export const CSV_HEADER_LABELS = {
   responseHeaders: "响应头",
   responseBody: "响应体",
   setCookies: "Set-Cookie",
+  wsFrames: "WebSocket消息",
 };
 
 /**

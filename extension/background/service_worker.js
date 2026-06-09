@@ -44,6 +44,7 @@ function broadcast(type, payload) {
 const captureEngine = new CaptureEngine({
   dataStore,
   onRecord: (record) => broadcast(EVENT.NEW_RECORD, record),
+  onUpdate: (record) => broadcast(EVENT.UPDATE_RECORD, record),
   onAttachFailed: (tabId, message) =>
     broadcast(EVENT.ATTACH_FAILED, { tabId, message: `标签页 ${tabId} 附加失败：${message}` }),
   getCaptureAll: () => captureAll,

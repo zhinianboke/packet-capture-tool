@@ -80,6 +80,10 @@ export const MSG = {
 // 后台经长连接端口推送给界面的事件类型
 export const EVENT = {
   NEW_RECORD: "new_record", // 新增一条请求记录
+  UPDATE_RECORD: "update_record", // 更新一条已存在记录（如 WebSocket 收发新帧）
   ATTACH_FAILED: "attach_failed", // 某标签页附加失败
   STATUS_CHANGED: "status_changed", // 监听状态变化
 };
+
+// WebSocket 单条连接最多保留的帧数，超出丢弃最老帧，防止高频推送导致内存膨胀
+export const MAX_WS_FRAMES = 500;

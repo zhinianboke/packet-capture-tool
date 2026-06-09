@@ -8,6 +8,7 @@ import { CdpSession } from "./cdp_session.js";
 import { shouldCapture, shouldCaptureBody, truncateBody, isHtmlContentType } from "../common/filters.js";
 import { parseQueryParams } from "../common/url_util.js";
 import { nowBeijingISO } from "../common/time_util.js";
+import { MAX_WS_FRAMES } from "../common/constants.js";
 
 // 无法或不应附加调试器的页面前缀：浏览器内置页、扩展自身页、DevTools、空白页等。
 // 对这些页面附加会失败并产生噪音提示，故在附加前过滤。
@@ -40,12 +41,14 @@ export class CaptureEngine {
    * @param {object} deps 依赖项
    * @param {import("./data_store.js").DataStore} deps.dataStore 数据存储
    * @param {(record:object) => void} deps.onRecord 新记录回调（推送给界面）
+   * @param {(record:object) => void} [deps.onUpdate] 记录更新回调（如 WebSocket 新帧）
    * @param {(tabId:number, message:string) => void} deps.onAttachFailed 附加失败回调
    * @param {() => boolean} deps.getCaptureAll 读取“捕获全部”开关的函数
    */
-  constructor({ dataStore, onRecord, onAttachFailed, getCaptureAll }) {
+  constructor({ dataStore, onRecord, onUpdate, onAttachFailed, getCaptureAll }) {
     this._dataStore = dataStore;
     this._onRecord = onRecord;
+    this._onUpdate = onUpdate;
     this._onAttachFailed = onAttachFailed;
     this._getCaptureAll = getCaptureAll;
 
@@ -54,6 +57,8 @@ export class CaptureEngine {
     // requestWillBeSentExtraInfo 携带的完整请求头（含 Cookie）暂存区，
     // 用于应对该事件早于 requestWillBeSent 到达的乱序场景，键同 pending 键。
     this._extraReqHeaders = new Map();
+    // 进行中的 WebSocket 连接：键为 pending 键，值为 { record, frames, saved }
+    this._wsConns = new Map();
     // 已附加的标签页集合
     this._attachedTabs = new Set();
     // 正在附加中的标签页集合（同步去重，防止并发重复附加的竞态）
@@ -123,6 +128,7 @@ export class CaptureEngine {
     this._attachedTabs.clear();
     this._pending.clear();
     this._extraReqHeaders.clear();
+    this._wsConns.clear();
     this._session.unregisterListeners();
   }
 
@@ -185,6 +191,28 @@ export class CaptureEngine {
         break;
       case "Network.loadingFailed":
         this._onLoadingFailed(source, params);
+        break;
+      // WebSocket 事件（CDP 专用，不走 requestWillBeSent/responseReceived）
+      case "Network.webSocketCreated":
+        this._onWsCreated(source, params);
+        break;
+      case "Network.webSocketWillSendHandshakeRequest":
+        this._onWsHandshakeRequest(source, params);
+        break;
+      case "Network.webSocketHandshakeResponseReceived":
+        this._onWsHandshakeResponse(source, params);
+        break;
+      case "Network.webSocketFrameSent":
+        this._onWsFrame(source, params, "send");
+        break;
+      case "Network.webSocketFrameReceived":
+        this._onWsFrame(source, params, "receive");
+        break;
+      case "Network.webSocketFrameError":
+        this._onWsFrameError(source, params);
+        break;
+      case "Network.webSocketClosed":
+        this._onWsClosed(source, params);
         break;
       default:
         break;
@@ -485,6 +513,136 @@ export class CaptureEngine {
     this._pending.delete(key);
     entry.responseBody = null;
     await this._finalize(entry);
+  }
+
+  /* ---------------- WebSocket 处理 ---------------- */
+
+  /**
+   * webSocketCreated：建立连接，初始化 WS 记录（尚未落库，待握手响应后保存）。
+   */
+  _onWsCreated(source, params) {
+    const key = this._pendingKey(source, params.requestId);
+    this._wsConns.set(key, {
+      record: {
+        requestId: params.requestId,
+        tabId: source.tabId,
+        frameId: "",
+        url: params.url || "",
+        method: "GET",
+        resourceType: "WebSocket",
+        queryParams: parseQueryParams(params.url || ""),
+        requestHeaders: {},
+        postData: null,
+        status: null,
+        responseHeaders: {},
+        responseBody: null,
+        bodyTruncated: false,
+        setCookies: [],
+        isRedirect: false,
+        redirectTo: "",
+        isWebSocket: true,
+        wsFrames: [],
+        wsClosed: false,
+        timestamp: nowBeijingISO(),
+      },
+      saved: false,
+    });
+  }
+
+  /** webSocketWillSendHandshakeRequest：记录握手请求头 */
+  _onWsHandshakeRequest(source, params) {
+    const conn = this._wsConns.get(this._pendingKey(source, params.requestId));
+    if (!conn) return;
+    const req = params.request || {};
+    conn.record.requestHeaders = { ...(req.headers || {}) };
+  }
+
+  /**
+   * webSocketHandshakeResponseReceived：记录握手响应（状态、响应头），此时落库并推送界面。
+   */
+  async _onWsHandshakeResponse(source, params) {
+    const conn = this._wsConns.get(this._pendingKey(source, params.requestId));
+    if (!conn) return;
+    const resp = params.response || {};
+    conn.record.status = resp.status != null ? resp.status : 101;
+    conn.record.responseHeaders = resp.headers || {};
+    for (const c of this._extractSetCookies(resp.headers || {})) {
+      conn.record.setCookies.push(c);
+    }
+    await this._saveOrUpdateWs(conn);
+  }
+
+  /**
+   * webSocketFrameSent / webSocketFrameReceived：累积收发帧。
+   * @param {"send"|"receive"} direction 方向
+   */
+  async _onWsFrame(source, params, direction) {
+    const conn = this._wsConns.get(this._pendingKey(source, params.requestId));
+    if (!conn) return;
+    const resp = params.response || {};
+    conn.record.wsFrames.push({
+      direction, // send=发送，receive=接收
+      opcode: resp.opcode, // 1=文本，2=二进制，8=关闭，9/10=ping/pong
+      data: truncateBody(resp.payloadData != null ? String(resp.payloadData) : ""),
+      time: nowBeijingISO(),
+    });
+    // 超过上限时丢弃最老帧，防止高频场景内存膨胀
+    if (conn.record.wsFrames.length > MAX_WS_FRAMES) {
+      conn.record.wsFrames.shift();
+    }
+    await this._saveOrUpdateWs(conn);
+  }
+
+  /** webSocketFrameError：记录帧错误为一条特殊帧 */
+  async _onWsFrameError(source, params) {
+    const conn = this._wsConns.get(this._pendingKey(source, params.requestId));
+    if (!conn) return;
+    conn.record.wsFrames.push({
+      direction: "error",
+      opcode: null,
+      data: params.errorMessage || "WebSocket 帧错误",
+      time: nowBeijingISO(),
+    });
+    await this._saveOrUpdateWs(conn);
+  }
+
+  /** webSocketClosed：标记连接关闭并清理内存缓存 */
+  async _onWsClosed(source, params) {
+    const key = this._pendingKey(source, params.requestId);
+    const conn = this._wsConns.get(key);
+    if (!conn) return;
+    conn.record.wsClosed = true;
+    await this._saveOrUpdateWs(conn);
+    this._wsConns.delete(key);
+  }
+
+  /**
+   * 保存或更新 WebSocket 记录：首次落库取得 id 并以「新增」推送界面，
+   * 之后帧更新以「更新」推送，UI 按 id 原地刷新。
+   * 用每连接的串行队列（_chain）保证写操作顺序执行，避免握手响应与首帧并发导致重复保存。
+   * 受「捕获全部」开关与筛选规则约束（WebSocket 默认属采集范围，非静态资源）。
+   */
+  _saveOrUpdateWs(conn) {
+    const captureAll = this._getCaptureAll ? !!this._getCaptureAll() : false;
+    if (!shouldCapture(conn.record.resourceType, captureAll)) return Promise.resolve();
+    // 串行化：所有写操作排在上一次之后执行，保证 saved 标志的判断不被并发穿插
+    conn._chain = (conn._chain || Promise.resolve()).then(async () => {
+      try {
+        if (!conn.saved) {
+          const id = await this._dataStore.save(conn.record);
+          conn.record.id = id;
+          conn.saved = true;
+          if (this._onRecord) this._onRecord(conn.record);
+        } else {
+          await this._dataStore.update(conn.record);
+          if (this._onUpdate) this._onUpdate(conn.record);
+        }
+      } catch (e) {
+        // 存储失败静默处理，避免控制台报错
+        void e;
+      }
+    });
+    return conn._chain;
   }
 
   /**

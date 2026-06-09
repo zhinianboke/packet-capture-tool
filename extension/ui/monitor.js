@@ -79,13 +79,14 @@ function createRow(record) {
   row.className = "list-row";
   row.dataset.id = record.id;
   const statusCls = record.status == null ? "st-none" : record.status >= 400 ? "st-err" : "st-ok";
-  // 重定向记录加标识，URL 后附跳转目标
+  // 重定向 / WebSocket 标识，URL 前显示
   const redirectTag = record.isRedirect ? `<span class="redirect-tag" title="重定向跳转">↳ 重定向</span>` : "";
+  const wsTag = record.isWebSocket ? `<span class="ws-tag" title="WebSocket 连接">WS</span>` : "";
   // 用户可见内容均经 HTML 转义防 XSS（规范第 22 条）
   row.innerHTML =
     `<span class="col col-time" title="${escapeHtml(record.timestamp)}">${escapeHtml(formatTime(record.timestamp))}</span>` +
-    `<span class="col col-method">${escapeHtml(record.method)}</span>` +
-    `<span class="col col-url" title="${escapeHtml(record.url)}">${redirectTag}${escapeHtml(record.url)}</span>` +
+    `<span class="col col-method">${escapeHtml(record.isWebSocket ? "WS" : record.method)}</span>` +
+    `<span class="col col-url" title="${escapeHtml(record.url)}">${wsTag}${redirectTag}${escapeHtml(record.url)}</span>` +
     `<span class="col col-status ${statusCls}">${escapeHtml(record.status == null ? "-" : record.status)}</span>`;
   row.addEventListener("click", () => selectRecord(record.id, row));
   // 右键弹出菜单（复制为 fetch 等）
@@ -121,6 +122,39 @@ function renderList() {
   }
   refreshEmptyTip();
   refreshFilterCount();
+}
+
+/**
+ * 更新一条已存在的记录（如 WebSocket 收发新帧）：替换内存数据、重建对应行，
+ * 若正在查看该记录详情则同步刷新。
+ * @param {object} record 更新后的完整记录
+ */
+function updateRecord(record) {
+  const idx = records.findIndex((r) => r.id === record.id);
+  if (idx < 0) {
+    // 内存中没有（可能已被上限裁剪），按新记录处理
+    appendRecord(record);
+    return;
+  }
+  const prev = records[idx];
+  records[idx] = record;
+  // 列表行只展示 时间/方法/URL/状态码，仅当这些可见字段变化时才重建行，
+  // 避免 WebSocket 高频帧更新时无谓地重建 DOM、打断交互。
+  const rowChanged =
+    !prev ||
+    prev.status !== record.status ||
+    prev.method !== record.method ||
+    prev.url !== record.url;
+  if (rowChanged) {
+    const oldRow = listEl.querySelector(`.list-row[data-id="${record.id}"]`);
+    if (oldRow) {
+      const newRow = createRow(record);
+      oldRow.replaceWith(newRow);
+      if (record.id === selectedId) newRow.classList.add("selected");
+    }
+  }
+  // 若正在查看这条记录，刷新详情（帧列表实时更新）
+  if (record.id === selectedId) renderDetail(record);
 }
 
 /** 对已有行重新应用筛选（仅切换显隐，不重建 DOM） */
@@ -185,9 +219,9 @@ function fmt(v) {
 /** 渲染选中记录的请求头、请求参数、响应头、响应体、Set-Cookie（需求 3.3） */
 function renderDetail(record) {
   const setCookieText = (record.setCookies || []).join("\n");
-  detailPanel.innerHTML =
+  const meta =
     `<div class="detail-meta">` +
-    `<div><strong>方法：</strong>${escapeHtml(record.method)}</div>` +
+    `<div><strong>方法：</strong>${escapeHtml(record.isWebSocket ? "WebSocket" : record.method)}</div>` +
     `<div><strong>状态码：</strong>${escapeHtml(record.status == null ? "-" : record.status)}</div>` +
     `<div><strong>资源类型：</strong>${escapeHtml(record.resourceType)}</div>` +
     `<div><strong>时间：</strong>${escapeHtml(record.timestamp)}</div>` +
@@ -195,16 +229,58 @@ function renderDetail(record) {
     (record.isRedirect
       ? `<div class="detail-url"><strong>重定向至：</strong>${escapeHtml(record.redirectTo || "")}</div>`
       : "") +
-    `</div>` +
-    detailBlock("请求头", fmt(record.requestHeaders)) +
-    detailBlock("查询参数", fmtQuery(record.queryParams)) +
-    detailBlock("请求体参数", fmt(record.postData)) +
-    detailBlock("响应头", fmt(record.responseHeaders)) +
-    detailBlock(
-      "响应体" + (record.bodyTruncated ? "（已截断）" : ""),
-      fmt(record.responseBody)
-    ) +
-    detailBlock("Set-Cookie", setCookieText);
+    `</div>`;
+
+  let body;
+  if (record.isWebSocket) {
+    // WebSocket：握手头 + 收发帧列表
+    body =
+      detailBlock("握手请求头", fmt(record.requestHeaders)) +
+      detailBlock("查询参数", fmtQuery(record.queryParams)) +
+      detailBlock("握手响应头", fmt(record.responseHeaders)) +
+      detailBlock("Set-Cookie", setCookieText) +
+      renderWsFrames(record);
+  } else {
+    body =
+      detailBlock("请求头", fmt(record.requestHeaders)) +
+      detailBlock("查询参数", fmtQuery(record.queryParams)) +
+      detailBlock("请求体参数", fmt(record.postData)) +
+      detailBlock("响应头", fmt(record.responseHeaders)) +
+      detailBlock(
+        "响应体" + (record.bodyTruncated ? "（已截断）" : ""),
+        fmt(record.responseBody)
+      ) +
+      detailBlock("Set-Cookie", setCookieText);
+  }
+  detailPanel.innerHTML = meta + body;
+}
+
+/** 渲染 WebSocket 帧列表区块 */
+function renderWsFrames(record) {
+  const frames = record.wsFrames || [];
+  const closedTag = record.wsClosed ? "（已关闭）" : "（连接中）";
+  const dirLabel = { send: "↑ 发送", receive: "↓ 接收", error: "⚠ 错误" };
+  const rows = frames
+    .map((f) => {
+      const m = f.time ? String(f.time).match(/T(\d{2}:\d{2}:\d{2})/) : null;
+      const t = m ? m[1] : "";
+      const label = dirLabel[f.direction] || f.direction;
+      const cls = f.direction === "send" ? "ws-send" : f.direction === "receive" ? "ws-recv" : "ws-err";
+      return (
+        `<div class="ws-frame ${cls}">` +
+        `<span class="ws-dir">${escapeHtml(label)}</span>` +
+        `<span class="ws-time">${escapeHtml(t)}</span>` +
+        `<pre class="ws-data">${escapeHtml(f.data == null ? "" : String(f.data))}</pre>` +
+        `</div>`
+      );
+    })
+    .join("");
+  return (
+    `<section class="detail-block">` +
+    `<h3 class="detail-title">WebSocket 消息 ${escapeHtml(closedTag)} · 共 ${frames.length} 帧</h3>` +
+    `<div class="ws-frames">${rows || '<div class="ws-empty">暂无消息帧</div>'}</div>` +
+    `</section>`
+  );
 }
 
 /** 将查询参数数组格式化为「名=值」多行文本 */
@@ -252,6 +328,8 @@ function connectPort() {
     if (!msg) return;
     if (msg.type === EVENT.NEW_RECORD) {
       appendRecord(msg.payload);
+    } else if (msg.type === EVENT.UPDATE_RECORD) {
+      updateRecord(msg.payload);
     } else if (msg.type === EVENT.ATTACH_FAILED) {
       showToast(msg.payload.message, "error", 4000);
     } else if (msg.type === EVENT.STATUS_CHANGED) {
